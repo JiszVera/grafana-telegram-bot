@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: grafana-telegram-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python alert_server.py
+    envVars:
+      - key: BOT_TOKEN
+        value: 8044243608:AAGrVdzDeCxBsO9fw2Pchg_ckivF9Ro72Dk
+      - key: CHAT_ID
+        value: -4807339056
