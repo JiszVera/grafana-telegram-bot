@@ -4,76 +4,67 @@ import os
 
 app = Flask(__name__)
 
-# Obtener variables de entorno de forma segura
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
 if not BOT_TOKEN or not CHAT_ID:
     raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
 
-# Guardar el último ID de mensaje (memoria temporal)
-last_message_id = None
-
-@app.route("/")
-def health_check():
-    return "Bot en línea", 200
-
 @app.route("/alert", methods=["POST"])
 def alert():
-    global last_message_id
+    data = request.get_json(force=True)
+    alerts = data.get("alerts", [])
 
-    try:
-        data = request.get_json(force=True)
-    except Exception as e:
-        print(f"Error leyendo JSON: {e}")
-        return {"status": "error", "message": "JSON inválido"}, 400
+    if not alerts:
+        return {"status": "no alerts"}
 
-    print("=== DATA RECIBIDA ===")
-    print(data)
-    print("=====================")
+    message_lines = []
+    firing_alerts = [a for a in alerts if a.get("status") == "firing"]
+    resolved_alerts = [a for a in alerts if a.get("status") == "resolved"]
 
-    # Datos de Grafana
-    state = data.get("state", "unknown").lower()
-    alert_name = data.get("message", "Sin nombre de alerta")  # nombre de la alerta (alert rule)
-    annotations = data.get("annotations", {})
-    summary = annotations.get("summary", "")  # resumen de la alerta
+    if firing_alerts:
+        message_lines.append(f"🚨 <b>ALARMAS ACTIVAS ({len(firing_alerts)})</b>\n")
+        for alert in firing_alerts:
+            labels = alert.get("labels", {})
+            annotations = alert.get("annotations", {})
+            alertname = labels.get("alertname", "Sin nombre")
+            severity = labels.get("severity", "")
+            summary = annotations.get("summary", "")
+            starts_at = alert.get("startsAt", "")  # Puedes formatear fecha si quieres
+            sev_str = f"<u><b>P{severity}</b></u> " if severity else ""
+            message_lines.append(f"{sev_str}<b>{alertname}</b>\n- {summary}\n- Inicio: {starts_at}\n")
 
-    # Filtrar mensaje innecesario
-    if "power fail" in summary.lower():
-        summary = "Evento detectado"
+    if resolved_alerts:
+        message_lines.append(f"✅ <b>ALARMAS RESUELTAS ({len(resolved_alerts)})</b>\n")
+        for alert in resolved_alerts:
+            labels = alert.get("labels", {})
+            annotations = alert.get("annotations", {})
+            alertname = labels.get("alertname", "Sin nombre")
+            severity = labels.get("severity", "")
+            summary = annotations.get("summary", "")
+            ends_at = alert.get("endsAt", "")
+            sev_str = f"<u><b>P{severity}</b></u> " if severity else ""
+            message_lines.append(f"{sev_str}<b>{alertname}</b>\n- {summary}\n- Fin: {ends_at}\n")
 
-    # Personalización del mensaje
-    titulo = "⚡Energia&Clima⚡"
-    estado = "🔴 *Alarma activada:*" if state == "firing" else "✅ *Alarma resuelta:*"
-    ubicacion = f"🏷️ {alert_name}" if alert_name else "📍 Ubicación desconocida"
-    detalle = f"🚨{summary}🚨" if summary else "🚨Sin detalle🚨"
+    external_url = data.get("externalURL", "")
+    if external_url:
+        message_lines.append(f'<a href="{external_url}">📲 Ver en Grafana</a>')
 
-    text = f"{titulo}\n\n{estado}\n{ubicacion}\n\n*Detalle:*\n{detalle}"
-
-    print("=== MENSAJE A ENVIAR ===")
-    print(text)
-    print("========================")
+    text = "\n".join(message_lines)
 
     payload = {
         "chat_id": CHAT_ID,
         "text": text,
-        "parse_mode": "Markdown"
+        "parse_mode": "HTML"
     }
 
-    # Enviar o editar mensaje en Telegram
-    if last_message_id and state in ["firing", "resolved"]:
-        edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
-        payload["message_id"] = last_message_id
-        r = requests.post(edit_url, json=payload)
-        print(f"Editar mensaje: status_code={r.status_code}, response={r.text}")
-    else:
-        send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        r = requests.post(send_url, json=payload)
-        print(f"Enviar mensaje: status_code={r.status_code}, response={r.text}")
-        if r.status_code == 200:
-            last_message_id = r.json()["result"]["message_id"]
+    send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    r = requests.post(send_url, json=payload)
 
-    return {"status": "ok"}
+    if r.status_code == 200:
+        return {"status": "ok"}
+    else:
+        return {"status": "error", "detail": r.text}, 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
