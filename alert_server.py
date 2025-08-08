@@ -28,8 +28,7 @@ def alert():
     annotations = alert.get("annotations", {})
 
     alertname = labels.get("alertname", "Sin nombre")
-    summary = annotations.get("summary", "Sin resumen")  # Fijo si no viene
-    text = f"{emoji} <b>{title}</b>\n\n🏢 {alertname}\n\n- {summary}\n"
+    summary = annotations.get("summary", "🚨GRUPO EN SERVICIO🚨")  # Fijo si no viene
     external_url = data.get("externalURL", "")
 
     # Crear mensaje base (emoji depende del estado)
@@ -88,6 +87,8 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
+
 
 
 
