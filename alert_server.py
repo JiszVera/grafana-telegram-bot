@@ -19,56 +19,55 @@ def alert():
         return {"status": "no alerts"}
 
     message_lines = []
-    firing_alerts = [a for a in alerts if a.get("status") == "firing"]
-    resolved_alerts = [a for a in alerts if a.get("status") == "resolved"]
 
-    if firing_alerts:
-        message_lines.append(f"🚨 <b>ALARMAS ACTIVAS ({len(firing_alerts)})</b>\n")
-        for alert in firing_alerts:
-            labels = alert.get("labels", {})
-            annotations = alert.get("annotations", {})
-            alertname = labels.get("alertname", "Sin nombre")
-            severity = labels.get("severity", "")
-            summary = annotations.get("summary", "")
-            starts_at = alert.get("startsAt", "")  # Puedes formatear fecha si quieres
-            sev_str = f"<u><b>P{severity}</b></u> " if severity else ""
-            message_lines.append(f"{sev_str}<b>{alertname}</b>\n- {summary}\n- Inicio: {starts_at}\n")
+    # Solo tomamos la primera alerta por simplicidad
+    alert = alerts[0]
+    status = alert.get("status")
 
-    if resolved_alerts:
-        message_lines.append(f"✅ <b>ALARMAS RESUELTAS ({len(resolved_alerts)})</b>\n")
-        for alert in resolved_alerts:
-            labels = alert.get("labels", {})
-            annotations = alert.get("annotations", {})
-            alertname = labels.get("alertname", "Sin nombre")
-            severity = labels.get("severity", "")
-            summary = annotations.get("summary", "")
-            ends_at = alert.get("endsAt", "")
-            sev_str = f"<u><b>P{severity}</b></u> " if severity else ""
-            message_lines.append(f"{sev_str}<b>{alertname}</b>\n- {summary}\n- Fin: {ends_at}\n")
+    if status == "firing":
+        labels = alert.get("labels", {})
+        annotations = alert.get("annotations", {})
+        alertname = labels.get("alertname", "Sin nombre")
+        severity = labels.get("severity", "")
+        summary = annotations.get("summary", "")
+        sev_str = f"<u><b>P{severity}</b></u> " if severity else ""
 
-    external_url = data.get("externalURL", "")
-    if external_url:
-        message_lines.append(f'<a href="{external_url}">📲 Ver en Grafana</a>')
+        message_lines.append(f"🔴 <b>ALERTA ACTIVA</b>\n")
+        message_lines.append(f"{sev_str}<b>{alertname}</b>\n")
+        if summary:
+            message_lines.append(f"- {summary}")
 
-    text = "\n".join(message_lines)
+        external_url = data.get("externalURL", "")
+        if external_url:
+            message_lines.append(f'<a href="{external_url}">📲 Ver en Grafana</a>')
 
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": text,
-        "parse_mode": "HTML"
-    }
+        text = "\n".join(message_lines)
 
-    send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    r = requests.post(send_url, json=payload)
+        payload = {
+            "chat_id": CHAT_ID,
+            "text": text,
+            "parse_mode": "HTML"
+        }
 
-    if r.status_code == 200:
-        return {"status": "ok"}
+        send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        r = requests.post(send_url, json=payload)
+
+        if r.status_code == 200:
+            return {"status": "alerta enviada"}
+        else:
+            return {"status": "error", "detail": r.text}, 500
+
+    elif status == "resolved":
+        # Ignoramos alerta resuelta (no enviamos nada)
+        return {"status": "alerta resuelta ignorada"}
+
     else:
-        return {"status": "error", "detail": r.text}, 500
+        return {"status": "estado desconocido"}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
