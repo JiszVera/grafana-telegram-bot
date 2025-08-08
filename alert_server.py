@@ -24,6 +24,10 @@ def alert():
 
     data = request.get_json(force=True)
 
+    print("=== DATA RECIBIDA ===")
+    print(data)
+    print("=====================")
+
     # Datos de Grafana
     state = data.get("state", "unknown").lower()
     message = data.get("message", "Sin mensaje")
@@ -43,6 +47,10 @@ def alert():
 
     text = f"{titulo}\n\n{estado}\n📍 {ubicacion}\n\n*Detalle:*\n{detalle}"
 
+    print("=== MENSAJE A ENVIAR ===")
+    print(text)
+    print("========================")
+
     payload = {
         "chat_id": CHAT_ID,
         "text": text,
@@ -53,10 +61,12 @@ def alert():
     if last_message_id and state in ["firing", "resolved"]:
         edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
         payload["message_id"] = last_message_id
-        requests.post(edit_url, json=payload)
+        r = requests.post(edit_url, json=payload)
+        print(f"Editar mensaje: status_code={r.status_code}, response={r.text}")
     else:
         send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         r = requests.post(send_url, json=payload)
+        print(f"Enviar mensaje: status_code={r.status_code}, response={r.text}")
         if r.status_code == 200:
             last_message_id = r.json()["result"]["message_id"]
 
@@ -65,5 +75,6 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
