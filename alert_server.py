@@ -22,7 +22,11 @@ def health_check():
 def alert():
     global last_message_id
 
-    data = request.get_json(force=True)
+    try:
+        data = request.get_json(force=True)
+    except Exception as e:
+        print(f"Error leyendo JSON: {e}")
+        return {"status": "error", "message": "JSON inválido"}, 400
 
     print("=== DATA RECIBIDA ===")
     print(data)
