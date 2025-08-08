@@ -14,17 +14,21 @@ def alert():
     global last_message_id
 
     data = request.json
-    state = data.get("state")
+
+    # Datos de Grafana
+    state = data.get("state", "unknown")
     message = data.get("message", "Sin mensaje")
+    labels = data.get("labels", {})
+    annotations = data.get("annotations", {})
+    grafana_reason = annotations.get("summary", "Sin detalle")
 
-    if state == "firing":
-        emoji = "🔴"
-    elif state == "resolved":
-        emoji = "🟢"
-    else:
-        emoji = "⚠️"
+    # Personaliza el mensaje
+    titulo = "⚡Energia&Clima⚡"
+    estado = "🔴 Alarma activada:" if state.lower() == "firing" else "✅ Alarma resuelta:"
+    ubicacion = labels.get("location", "Ubicación desconocida")
+    detalle = detalle = f"🚨{grafana_reason}🚨"
 
-    text = f"{emoji} *Estado:* {state.upper()}\n📝 {message}"
+    text = f"{titulo}\n\n{estado}\n{ubicacion}\n\nDetalle:\n{detalle}"
 
     payload = {
         "chat_id": CHAT_ID,
@@ -32,21 +36,17 @@ def alert():
         "parse_mode": "Markdown"
     }
 
-    if last_message_id and state in ["firing", "resolved"]:
-        # Editar mensaje existente
+    # Edita mensaje anterior si hay
+    if last_message_id:
         edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
         payload["message_id"] = last_message_id
-        r = requests.post(edit_url, json=payload)
+        requests.post(edit_url, json=payload)
     else:
-        # Enviar mensaje nuevo y guardar ID
         send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         r = requests.post(send_url, json=payload)
         if r.status_code == 200:
             last_message_id = r.json()["result"]["message_id"]
 
     return {"status": "ok"}
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
 
 
