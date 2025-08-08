@@ -34,22 +34,21 @@ def alert():
 
     # Datos de Grafana
     state = data.get("state", "unknown").lower()
-    message = data.get("message", "Sin mensaje")
-    labels = data.get("labels", {})
+    alert_name = data.get("message", "Sin nombre de alerta")  # nombre de la alerta (alert rule)
     annotations = data.get("annotations", {})
-    grafana_reason = annotations.get("summary", "")
+    summary = annotations.get("summary", "")  # resumen de la alerta
 
-    # Filtrar mensaje innecesario (como 'power fail')
-    if "power fail" in grafana_reason.lower():
-        grafana_reason = "Evento detectado"
+    # Filtrar mensaje innecesario
+    if "power fail" in summary.lower():
+        summary = "Evento detectado"
 
     # Personalización del mensaje
     titulo = "⚡Energia&Clima⚡"
     estado = "🔴 *Alarma activada:*" if state == "firing" else "✅ *Alarma resuelta:*"
-    ubicacion = labels.get("location", "Ubicación desconocida")
-    detalle = f"🚨{grafana_reason}🚨" if grafana_reason else "🚨Sin detalle🚨"
+    ubicacion = f"🏷️ {alert_name}" if alert_name else "📍 Ubicación desconocida"
+    detalle = f"🚨{summary}🚨" if summary else "🚨Sin detalle🚨"
 
-    text = f"{titulo}\n\n{estado}\n📍 {ubicacion}\n\n*Detalle:*\n{detalle}"
+    text = f"{titulo}\n\n{estado}\n{ubicacion}\n\n*Detalle:*\n{detalle}"
 
     print("=== MENSAJE A ENVIAR ===")
     print(text)
