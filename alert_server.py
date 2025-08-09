@@ -77,6 +77,7 @@ def alert():
     elif status == "resolved":
         message_id = message_store.get(alertname)
         if not message_id:
+            print(f"Error: No se encontró message_id para la alerta {alertname}")
             return {"status": "no se encontró message_id para editar"}
 
         payload = {
@@ -89,9 +90,12 @@ def alert():
         edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
         r = requests.post(edit_url, json=payload)
 
+        # Depuración: Revisamos si la edición fue exitosa
         if r.status_code == 200:
+            print(f"Mensaje editado correctamente para {alertname}, message_id: {message_id}")
             return {"status": "mensaje editado"}
         else:
+            print(f"Error al editar mensaje para {alertname}: {r.text}")
             return {"status": "error al editar", "detail": r.text}, 500
 
 if __name__ == "__main__":
