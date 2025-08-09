@@ -48,6 +48,10 @@ def alert():
 
     # Si es firing, enviamos nuevo mensaje y guardamos message_id
     if status == "firing":
+        # Verificamos si ya se envió el mensaje previamente
+        if alertname in message_store:
+            return {"status": "alerta ya enviada", "message_id": message_store[alertname]}
+
         payload = {
             "text": text,
             "parse_mode": "HTML"
