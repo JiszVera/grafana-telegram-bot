@@ -1,3 +1,21 @@
+from flask import Flask, request
+import requests
+import os
+
+# Crear la aplicación Flask
+app = Flask(__name__)
+
+# Obtener las variables de entorno
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+CHAT_IDs = os.environ.get("CHAT_ID", "").split(",")  # Divide los chat_id por coma
+
+# Verificamos si las variables de entorno están definidas
+if not BOT_TOKEN or not CHAT_IDs:
+    raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
+
+# Diccionario en memoria para asociar alertname -> message_id
+message_store = {}
+
 @app.route("/alert", methods=["POST"])
 def alert():
     data = request.get_json(force=True)
@@ -70,15 +88,8 @@ def alert():
             "parse_mode": "HTML"
         }
 
-        edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
-        r = requests.post(edit_url, json=payload)
+        edit_url = f"https://api.telegram.org/b_
 
-        if r.status_code == 200:
-            print(f"Mensaje editado correctamente para {alertname}, message_id: {message_id}")
-            return {"status": "mensaje editado"}
-        else:
-            print(f"Error al editar mensaje para {alertname}: {r.text}")
-            return {"status": "error al editar", "detail": r.text}, 500
 
 
 
