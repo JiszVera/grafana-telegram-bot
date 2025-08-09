@@ -42,9 +42,8 @@ def alert():
         return {"status": "estado desconocido"}
 
     # Formar el texto del mensaje
-    text = f"{emoji} <b>{title}</b>\n\n🏢 {alertname}\n\n- {summary}\n"
-    if external_url:
-        text += f'<a href="{external_url}">📲 Ver en Grafana</a>'
+    text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n- {summary}\n"
+    
 
     # Si es firing, enviamos nuevo mensaje y guardamos message_id
     if status == "firing":
@@ -87,6 +86,7 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port) #esta la plantilla de donde proviene la alerta
+
 
 
 
