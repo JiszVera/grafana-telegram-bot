@@ -80,6 +80,11 @@ def alert():
         edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
         r = requests.post(edit_url, json=payload)
 
+        # Iterar sobre los chat_ids y enviar el mensaje a cada uno
+    for chat_id in CHAT_IDS:
+        payload["chat_id"] = chat_id
+        r = requests.post(send_url, json=payload)
+
         if r.status_code == 200:
             return {"status": "mensaje editado"}
         else:
@@ -88,6 +93,7 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port) #esta la plantilla de donde proviene la alerta
+
 
 
 
