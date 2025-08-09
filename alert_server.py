@@ -4,13 +4,12 @@ import os
 
 app = Flask(__name__)
 
+# Obtener las variables de entorno
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_IDS = os.environ.get("CHAT_ID", "").split(",")
-if not BOT_TOKEN or not CHAT_IDS:
-    raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
+CHAT_IDs = os.environ.get("CHAT_ID", "").split(",")  # Divide los chat_id por coma
 
-
-if not BOT_TOKEN or not CHAT_ID:
+# Verificamos si las variables de entorno están definidas
+if not BOT_TOKEN or not CHAT_IDs:
     raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
 
 # Diccionario en memoria para asociar alertname -> message_id
@@ -38,8 +37,6 @@ def alert():
     if status == "firing":
         emoji = "🔴"
         title = "ALERTA ACTIVA"
-
-    
     elif status == "resolved":
         emoji = "🟢"
         title = "ALERTA RESUELTA"
@@ -48,25 +45,24 @@ def alert():
 
     # Formar el texto del mensaje
     text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n{summary}\n"
-    
 
     # Si es firing, enviamos nuevo mensaje y guardamos message_id
     if status == "firing":
         payload = {
-            "chat_id": CHAT_ID,
             "text": text,
             "parse_mode": "HTML"
         }
-        send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        r = requests.post(send_url, json=payload)
+        
+        # Enviar mensaje a todos los chat_ids
+        for chat_id in CHAT_IDs:
+            payload["chat_id"] = chat_id
+            send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            r = requests.post(send_url, json=payload)
 
-        if r.status_code == 200:
-            resp = r.json()
-            message_id = resp["result"]["message_id"]
-            message_store[alertname] = message_id
-            return {"status": "alerta enviada", "message_id": message_id}
-        else:
-            return {"status": "error al enviar", "detail": r.text}, 500
+            if r.status_code != 200:
+                return {"status": "error al enviar", "detail": r.text}, 500
+
+        return {"status": "alertas enviadas"}
 
     # Si es resolved, editamos mensaje anterior (si existe)
     elif status == "resolved":
@@ -75,18 +71,13 @@ def alert():
             return {"status": "no se encontró message_id para editar"}
 
         payload = {
-            "chat_id": CHAT_ID,
+            "chat_id": CHAT_IDs[0],  # Asumimos que editas el mensaje en el primer chat_id
             "message_id": message_id,
             "text": text,
             "parse_mode": "HTML"
         }
         edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
         r = requests.post(edit_url, json=payload)
-
-        # Iterar sobre los chat_ids y enviar el mensaje a cada uno
-    for chat_id in CHAT_IDS:
-        payload["chat_id"] = chat_id
-        r = requests.post(send_url, json=payload)
 
         if r.status_code == 200:
             return {"status": "mensaje editado"}
@@ -95,7 +86,9 @@ def alert():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port) #esta la plantilla de donde proviene la alerta
+    app.run(host="0.0.0.0", port=port)
+
+
 
 
 
