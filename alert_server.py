@@ -52,14 +52,19 @@ def alert():
             "text": text,
             "parse_mode": "HTML"
         }
-        
+
         # Enviar mensaje a todos los chat_ids
         for chat_id in CHAT_IDs:
             payload["chat_id"] = chat_id
             send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
             r = requests.post(send_url, json=payload)
 
-            if r.status_code != 200:
+            if r.status_code == 200:
+                message_id = r.json().get("result", {}).get("message_id")
+                if message_id:
+                    # Guardamos el message_id por alertname
+                    message_store[alertname] = message_id
+            else:
                 return {"status": "error al enviar", "detail": r.text}, 500
 
         return {"status": "alertas enviadas"}
@@ -69,6 +74,10 @@ def alert():
         message_id = message_store.get(alertname)
         if not message_id:
             return {"status": "no se encontró message_id para editar"}
+
+        # Actualizamos el emoji a verde
+        emoji = "🟢"
+        text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n{summary}\n"
 
         payload = {
             "chat_id": CHAT_IDs[0],  # Asumimos que editas el mensaje en el primer chat_id
@@ -87,6 +96,8 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
+
 
 
 
