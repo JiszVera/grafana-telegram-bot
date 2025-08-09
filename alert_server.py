@@ -1,24 +1,14 @@
-import os
 from flask import Flask, request
 import requests
+import os
 
 app = Flask(__name__)
 
-# Obtener el BOT_TOKEN y CHAT_IDS desde las variables de entorno
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_IDS = os.environ.get("CHAT_IDS")
+CHAT_ID = os.environ.get("CHAT_ID")
 
-# Verificar que las variables se cargaron correctamente
-if not BOT_TOKEN:
-    raise ValueError("Falta el BOT_TOKEN en las variables de entorno.")
-if not CHAT_IDS:
-    raise ValueError("Falta el CHAT_IDS en las variables de entorno.")
-
-# Convertir CHAT_IDS en una lista
-CHAT_IDS = CHAT_IDS.split(",")  # Dividir la cadena por comas para obtener una lista
-
-# Asegurarse de que todos los chat IDs estén correctamente formateados
-CHAT_IDS = [chat_id.strip() for chat_id in CHAT_IDS]  # Eliminar espacios extras
+if not BOT_TOKEN or not CHAT_ID:
+    raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
 
 # Diccionario en memoria para asociar alertname -> message_id
 message_store = {}
@@ -46,6 +36,7 @@ def alert():
         emoji = "🔴"
         title = "ALERTA ACTIVA"
 
+    
     elif status == "resolved":
         emoji = "🟢"
         title = "ALERTA RESUELTA"
@@ -54,26 +45,25 @@ def alert():
 
     # Formar el texto del mensaje
     text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n{summary}\n"
+    
 
-    # Si es firing, enviamos nuevo mensaje a todos los canales y guardamos message_id
+    # Si es firing, enviamos nuevo mensaje y guardamos message_id
     if status == "firing":
-        for chat_id in CHAT_IDS:
-            payload = {
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "HTML"
-            }
-            send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-            r = requests.post(send_url, json=payload)
+        payload = {
+            "chat_id": CHAT_ID,
+            "text": text,
+            "parse_mode": "HTML"
+        }
+        send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        r = requests.post(send_url, json=payload)
 
-            if r.status_code == 200:
-                resp = r.json()
-                message_id = resp["result"]["message_id"]
-                message_store[alertname] = message_id  # Guardamos el message_id
-            else:
-                return {"status": "error al enviar", "detail": r.text}, 500
-
-        return {"status": "alerta enviada", "message_id": message_id}
+        if r.status_code == 200:
+            resp = r.json()
+            message_id = resp["result"]["message_id"]
+            message_store[alertname] = message_id
+            return {"status": "alerta enviada", "message_id": message_id}
+        else:
+            return {"status": "error al enviar", "detail": r.text}, 500
 
     # Si es resolved, editamos mensaje anterior (si existe)
     elif status == "resolved":
@@ -81,29 +71,23 @@ def alert():
         if not message_id:
             return {"status": "no se encontró message_id para editar"}
 
-        for chat_id in CHAT_IDS:
-            payload = {
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "text": text,
-                "parse_mode": "HTML"
-            }
-            edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
-            r = requests.post(edit_url, json=payload)
+        payload = {
+            "chat_id": CHAT_ID,
+            "message_id": message_id,
+            "text": text,
+            "parse_mode": "HTML"
+        }
+        edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
+        r = requests.post(edit_url, json=payload)
 
-            if r.status_code == 200:
-                # Respondemos solo cuando todos los mensajes han sido editados correctamente
-                continue
-            else:
-                return {"status": "error al editar", "detail": r.text}, 500
-
-        return {"status": "mensaje editado"}
+        if r.status_code == 200:
+            return {"status": "mensaje editado"}
+        else:
+            return {"status": "error al editar", "detail": r.text}, 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-
-
+    app.run(host="0.0.0.0", port=port) #esta la plantilla de donde proviene la alerta
 
 
 
