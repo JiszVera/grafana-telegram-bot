@@ -46,47 +46,46 @@ def alert():
     if external_url:
         text += f'<a href="{external_url}">📲 Ver en Grafana</a>'
 
-    # Si es firing, enviamos nuevo mensaje y guardamos message_id
-    if status == "firing":
-        payload = {
-            "chat_id": CHAT_ID,
-            "text": text,
-            "parse_mode": "HTML"
-        }
-        send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        r = requests.post(send_url, json=payload)
+  # Si es firing, enviamos nuevo mensaje si no existe
+if status == "firing":
+    if alert_key in message_store:
+        return {"status": "alerta ya enviada"}
 
-        if r.status_code == 200:
-            resp = r.json()
-            message_id = resp["result"]["message_id"]
-            message_store[alertname] = message_id
-            return {"status": "alerta enviada", "message_id": message_id}
-        else:
-            return {"status": "error al enviar", "detail": r.text}, 500
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": text,
+        "parse_mode": "HTML"
+    }
+    send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    r = requests.post(send_url, json=payload)
 
-    # Si es resolved, editamos mensaje anterior (si existe)
-    elif status == "resolved":
-        message_id = message_store.get(alertname)
-        if not message_id:
-            return {"status": "no se encontró message_id para editar"}
+    if r.status_code == 200:
+        resp = r.json()
+        message_id = resp["result"]["message_id"]
+        message_store[alert_key] = message_id
+        return {"status": "alerta enviada", "message_id": message_id}
+    else:
+        return {"status": "error al enviar", "detail": r.text}, 500
 
-        payload = {
-            "chat_id": CHAT_ID,
-            "message_id": message_id,
-            "text": text,
-            "parse_mode": "HTML"
-        }
-        edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
-        r = requests.post(edit_url, json=payload)
+# Si es resolved, editamos mensaje anterior (si existe)
+elif status == "resolved":
+    message_id = message_store.get(alert_key)
+    if not message_id:
+        return {"status": "no se encontró message_id para editar"}
 
-        if r.status_code == 200:
-            return {"status": "mensaje editado"}
-        else:
-            return {"status": "error al editar", "detail": r.text}, 500
+    payload = {
+        "chat_id": CHAT_ID,
+        "message_id": message_id,
+        "text": text,
+        "parse_mode": "HTML"
+    }
+    edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
+    r = requests.post(edit_url, json=payload)
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    if r.status_code == 200:
+        return {"status": "mensaje editado"}
+    else:
+        return {"status": "error al editar", "detail": r.text}, 50
 
 
 
