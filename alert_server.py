@@ -2,7 +2,6 @@ from flask import Flask, request
 import requests
 import os
 
-# Crear la aplicación Flask
 app = Flask(__name__)
 
 # Obtener las variables de entorno
@@ -58,7 +57,7 @@ def alert():
             "parse_mode": "HTML"
         }
 
-        # Enviar mensaje a todos los chat_ids y guardar el message_id
+        # Enviar mensaje a todos los chat_ids
         for chat_id in CHAT_IDs:
             payload["chat_id"] = chat_id
             send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -78,29 +77,27 @@ def alert():
     elif status == "resolved":
         message_id = message_store.get(alertname)
         if not message_id:
-            print(f"Error: No se encontró message_id para la alerta {alertname}")
             return {"status": "no se encontró message_id para editar"}
 
         payload = {
             "chat_id": CHAT_IDs[0],  # Asumimos que editas el mensaje en el primer chat_id
             "message_id": message_id,
-            "text": text,  # Editamos el mensaje con el emoji verde
+            "text": text,
             "parse_mode": "HTML"
         }
 
-        edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"  # Aquí se cerró el f-string correctamente
+        edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
         r = requests.post(edit_url, json=payload)
 
         if r.status_code == 200:
-            print(f"Mensaje editado correctamente para {alertname}, message_id: {message_id}")
             return {"status": "mensaje editado"}
         else:
-            print(f"Error al editar mensaje para {alertname}: {r.text}")
             return {"status": "error al editar", "detail": r.text}, 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
