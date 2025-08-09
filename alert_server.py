@@ -35,6 +35,11 @@ def alert():
     if status == "firing":
         emoji = "🔴"
         title = "ALERTA ACTIVA"
+
+    # Verificar si la alerta ya fue enviada
+        if alertname in message_store:
+            return {"status": "alerta ya enviada", "message_id": message_store[alertname]
+                    
     elif status == "resolved":
         emoji = "🟢"
         title = "ALERTA RESUELTA"
@@ -86,6 +91,7 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port) #esta la plantilla de donde proviene la alerta
+
 
 
 
