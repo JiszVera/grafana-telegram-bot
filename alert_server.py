@@ -86,12 +86,12 @@ def alert():
                 "message_id": message_id,
                 "text": text,  # Editamos el mensaje con el emoji verde
                 "parse_mode": "HTML"
-        }
-        edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
-        r = requests.post(edit_url, json=payload)
+            }
+            edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
+            r = requests.post(edit_url, json=payload)
 
-        # Log de la respuesta de Telegram
-        print(f"Respuesta de Telegram al intentar editar para {chat_id}: {r.status_code} - {r.text}")
+            # Log de la respuesta de Telegram
+            print(f"Respuesta de Telegram al intentar editar para {chat_id}: {r.status_code} - {r.text}")
 
             if r.status_code != 200:
                 # Si hay un error con cualquiera de los chat_ids, devolvemos error
@@ -104,23 +104,3 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
