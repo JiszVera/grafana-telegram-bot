@@ -46,56 +46,61 @@ def alert():
     # Formar el texto del mensaje
     text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n{summary}\n"
 
-    # Si es firing, enviamos nuevo mensaje y guardamos message_id
-    if status == "firing":
-        payload = {
-            "text": text,
-            "parse_mode": "HTML"
-        }
+# Si es firing, enviamos nuevo mensaje y guardamos message_id
+if status == "firing":
+    payload = {
+        "text": text,
+        "parse_mode": "HTML"
+    }
 
-        # Enviar mensaje a todos los chat_ids
-        for chat_id in CHAT_IDs:
-            payload["chat_id"] = chat_id
-            send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-            r = requests.post(send_url, json=payload)
+    # Enviar mensaje a todos los chat_ids
+    for chat_id in CHAT_IDs:
+        payload["chat_id"] = chat_id
+        send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        r = requests.post(send_url, json=payload)
 
-            if r.status_code == 200:
-                message_id = r.json().get("result", {}).get("message_id")
-                if message_id:
-                    # Guardamos el message_id por alertname
-                    message_store[alertname] = message_id
-            else:
-                return {"status": "error al enviar", "detail": r.text}, 500
+        if r.status_code == 200:
+            resp = r.json()
+            message_id = resp["result"]["message_id"]
+            message_store[alertname] = message_id  # Guardamos el message_id
+            print(f"Alerta enviada: {alertname} con message_id: {message_id}")
+        else:
+            return {"status": "error al enviar", "detail": r.text}, 500
+
+    return {"status": "alertas enviadas"}
+
 
         return {"status": "alertas enviadas"}
 
-    # Si es resolved, editamos mensaje anterior (si existe)
-    elif status == "resolved":
-        message_id = message_store.get(alertname)
-        if not message_id:
-            return {"status": "no se encontró message_id para editar"}
+   # Si la alerta es resolved, editamos el mensaje existente
+elif status == "resolved":
+    message_id = message_store.get(alertname)
+    if not message_id:
+        print(f"Error: No se encontró message_id para la alerta {alertname}")
+        return {"status": "no se encontró message_id para editar"}
 
-        # Actualizamos el emoji a verde
-        emoji = "🟢"
-        text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n{summary}\n"
+    payload = {
+        "chat_id": CHAT_IDs[0],  # Asumimos que editamos el mensaje en el primer chat_id
+        "message_id": message_id,
+        "text": text,  # Editamos el mensaje con el emoji verde
+        "parse_mode": "HTML"
+    }
 
-        payload = {
-            "chat_id": CHAT_IDs[0],  # Asumimos que editas el mensaje en el primer chat_id
-            "message_id": message_id,
-            "text": text,
-            "parse_mode": "HTML"
-        }
-        edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
-        r = requests.post(edit_url, json=payload)
+    edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
+    r = requests.post(edit_url, json=payload)
 
-        if r.status_code == 200:
-            return {"status": "mensaje editado"}
-        else:
-            return {"status": "error al editar", "detail": r.text}, 500
+    if r.status_code == 200:
+        print(f"Mensaje editado correctamente para {alertname}, message_id: {message_id}")
+        return {"status": "mensaje editado"}
+    else:
+        print(f"Error al editar mensaje para {alertname}: {r.text}")
+        return {"status": "error al editar", "detail": r.text}, 500
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
