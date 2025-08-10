@@ -79,29 +79,32 @@ def alert():
 
         print(f"Intentando editar el mensaje con message_id: {message_id}")  # Log para comprobar
 
-        payload = {
-            "chat_id": CHAT_IDs[0],  # Asumimos que editas el mensaje en el primer chat_id
-            "message_id": message_id,
-            "text": text,  # Editamos el mensaje con el emoji verde
-            "parse_mode": "HTML"
+        # Intentar editar el mensaje para cada chat_id
+        for chat_id in CHAT_IDs:
+            payload = {
+                "chat_id": chat_id,  # Editamos el mensaje para cada chat_id
+                "message_id": message_id,
+                "text": text,  # Editamos el mensaje con el emoji verde
+                "parse_mode": "HTML"
         }
         edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
         r = requests.post(edit_url, json=payload)
 
         # Log de la respuesta de Telegram
-        print(f"Respuesta de Telegram al intentar editar: {r.status_code} - {r.text}")
+        print(f"Respuesta de Telegram al intentar editar para {chat_id}: {r.status_code} - {r.text}")
 
-        if r.status_code == 200:
-            print(f"Mensaje editado correctamente para {alertname}, message_id: {message_id}")
-            return {"status": "mensaje editado"}
-        else:
-            # Agregar logs más detallados sobre la respuesta de Telegram
-            print(f"Error al editar mensaje para {alertname}, message_id: {message_id}: {r.text}")
-            return {"status": "error al editar", "detail": r.text}, 500
+            if r.status_code != 200:
+                # Si hay un error con cualquiera de los chat_ids, devolvemos error
+                print(f"Error al editar mensaje para {alertname}, message_id: {message_id}, chat_id: {chat_id}: {r.text}")
+                return {"status": "error al editar", "detail": r.text}, 500
+
+        print(f"Mensaje editado correctamente para {alertname}, message_id: {message_id}")
+        return {"status": "mensaje editado"}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
