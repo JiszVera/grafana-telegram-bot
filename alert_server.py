@@ -59,12 +59,7 @@ if status == "firing":
         send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         r = requests.post(send_url, json=payload)
 
-        if r.status_code == 200:
-            resp = r.json()
-            message_id = resp["result"]["message_id"]
-            message_store[alertname] = message_id  # Guardamos el message_id
-            print(f"Alerta enviada: {alertname} con message_id: {message_id}")
-        else:
+        if r.status_code != 200:
             return {"status": "error al enviar", "detail": r.text}, 500
 
     return {"status": "alertas enviadas"}
@@ -100,6 +95,7 @@ elif status == "resolved":
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
