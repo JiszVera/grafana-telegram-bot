@@ -84,9 +84,8 @@ def alert():
 
         print(f"Intentando editar el mensaje con message_id: {message_id}")  # Log para comprobar
 
-        # Inicializar failed_chats dentro de la sección de 'resolved'
         failed_chats = []  # Para almacenar los chat_ids que no se pudieron editar
-        
+
         # Intentar editar el mensaje para cada chat_id
         for chat_id in CHAT_IDs:
             payload = {
