@@ -52,7 +52,6 @@ if status == "firing":
         "text": text,
         "parse_mode": "HTML"
     }
-
     # Enviar mensaje a todos los chat_ids
     for chat_id in CHAT_IDs:
         payload["chat_id"] = chat_id
@@ -62,10 +61,8 @@ if status == "firing":
         if r.status_code != 200:
             return {"status": "error al enviar", "detail": r.text}, 500
 
+    # Este return debe estar dentro del bloque if
     return {"status": "alertas enviadas"}
-
-
-        return {"status": "alertas enviadas"}
 
    # Si la alerta es resolved, editamos el mensaje existente
 elif status == "resolved":
@@ -95,6 +92,7 @@ elif status == "resolved":
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
