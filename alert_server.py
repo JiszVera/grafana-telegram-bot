@@ -1,18 +1,32 @@
 from flask import Flask, request
 import requests
 import os
+import json
 
 app = Flask(__name__)
 
-# Obtener variables de entorno
+# Variables de entorno
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_IDs = os.environ.get("CHAT_ID", "").split(",")  # Lista separada por coma
+CHAT_IDs = os.environ.get("CHAT_ID", "").split(",")
 
 if not BOT_TOKEN or not CHAT_IDs:
     raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
 
-# Diccionario en memoria: {alertname: {chat_id: message_id}}
-message_store = {}
+# Cargar almacenamiento persistente de message_ids
+STORE_FILE = "message_store.json"
+
+def load_store():
+    try:
+        with open(STORE_FILE, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def save_store(store):
+    with open(STORE_FILE, "w") as f:
+        json.dump(store, f)
+
+message_store = load_store()
 
 @app.route("/alert", methods=["POST"])
 def alert():
@@ -26,11 +40,10 @@ def alert():
     status = alert.get("status")
     labels = alert.get("labels", {})
     annotations = alert.get("annotations", {})
-
     alertname = labels.get("alertname", "Sin nombre")
     summary = annotations.get("summary", "🚨GRUPO EN SERVICIO🚨")
 
-    # Estado visual
+    # Crear texto del mensaje
     if status == "firing":
         emoji = "🔴"
         title = "ALERTA ACTIVA"
@@ -43,38 +56,39 @@ def alert():
     text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n{summary}\n"
 
     if status == "firing":
-        message_store[alertname] = {}  # Inicializar diccionario por alerta
+        message_store[alertname] = {}
         for chat_id in CHAT_IDs:
             payload = {
-                "chat_id": chat_id,
+                "chat_id": chat_id.strip(),
                 "text": text,
                 "parse_mode": "HTML"
             }
             send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
             r = requests.post(send_url, json=payload)
 
-            if r.status_code == 200:
-                resp = r.json()
-                message_id = resp["result"]["message_id"]
-                message_store[alertname][chat_id] = message_id  # Guardar por chat_id
-                print(f"[FIRING] Enviado a {chat_id}, message_id: {message_id}")
-            else:
-                print(f"[FIRING ERROR] {chat_id}: {r.text}")
-                return {"status": "error al enviar", "detail": r.text}, 500
+            print(f"Enviando alerta a chat_id: {chat_id}")
+            print("Payload de envío:", payload)
+            print("Respuesta de Telegram:", r.status_code, "-", r.text)
 
+            if r.status_code == 200:
+                message_id = r.json()["result"]["message_id"]
+                message_store[alertname][chat_id] = message_id
+            else:
+                print(f"Error al enviar mensaje a {chat_id}: {r.text}")
+
+        save_store(message_store)
         return {"status": "alertas enviadas"}
 
     elif status == "resolved":
         if alertname not in message_store:
-            print(f"[RESOLVED] No se encontró message_id para: {alertname}")
-            return {"status": "no se encontró message_id para editar"}
+            return {"status": "alerta no encontrada para editar"}
 
-        failed = []
         for chat_id in CHAT_IDs:
+            chat_id = chat_id.strip()
             message_id = message_store[alertname].get(chat_id)
+
             if not message_id:
-                print(f"[RESOLVED] No hay message_id para chat {chat_id}")
-                failed.append(chat_id)
+                print(f"No se encontró message_id para {alertname} en {chat_id}")
                 continue
 
             payload = {
@@ -86,17 +100,16 @@ def alert():
             edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
             r = requests.post(edit_url, json=payload)
 
-            if r.status_code == 200:
-                print(f"[RESOLVED] Editado en {chat_id}, msg_id: {message_id}")
-            else:
-                print(f"[RESOLVED ERROR] {chat_id}: {r.text}")
-                failed.append(chat_id)
+            print(f"Intentando editar el mensaje con message_id: {message_id}")
+            print(f"Respuesta de Telegram al intentar editar para {chat_id}: {r.status_code} - {r.text}")
 
-        if failed:
-            return {"status": "error parcial", "failed_chats": failed}, 207
+            if r.status_code != 200:
+                print(f"Error al editar mensaje para {alertname}, message_id: {message_id}, chat_id: {chat_id}: {r.text}")
 
-        return {"status": "mensajes editados"}
+        return {"status": "resuelto enviado"}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
+
