@@ -80,17 +80,22 @@ def alert():
             "text": text,
             "parse_mode": "HTML"
         }
+        
+        # Intentamos editar el mensaje
         edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
         r = requests.post(edit_url, json=payload)
 
         if r.status_code == 200:
             return {"status": "mensaje editado"}
         else:
+            print(f"Error al editar mensaje para {alertname}: {r.text}")
             return {"status": "error al editar", "detail": r.text}, 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
+
 
 
 
