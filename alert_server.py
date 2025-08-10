@@ -31,6 +31,7 @@ def alert():
 
     alertname = labels.get("alertname", "Sin nombre")
     summary = annotations.get("summary", "🚨GRUPO EN SERVICIO🚨")  # Fijo si no viene
+    external_url = data.get("externalURL", "")
 
     # Crear mensaje base (emoji depende del estado)
     if status == "firing":
@@ -47,6 +48,11 @@ def alert():
 
     # Si es firing, enviamos nuevo mensaje y guardamos message_id
     if status == "firing":
+        # Verificamos si ya se ha enviado una alerta para esta alertname
+        if alertname in message_store:
+            print(f"Alerta ya enviada para {alertname}, no se envía de nuevo.")
+            return {"status": "alerta ya enviada", "message_id": message_store[alertname]}
+
         payload = {
             "text": text,
             "parse_mode": "HTML"
@@ -71,21 +77,24 @@ def alert():
     # Si es resolved, editamos mensaje anterior (si existe)
     elif status == "resolved":
         message_id = message_store.get(alertname)
+        
         if not message_id:
+            print(f"Error: No se encontró message_id para la alerta {alertname}")
             return {"status": "no se encontró message_id para editar"}
 
         payload = {
             "chat_id": CHAT_IDs[0],  # Asumimos que editas el mensaje en el primer chat_id
             "message_id": message_id,
-            "text": text,
+            "text": text,  # Editamos el mensaje con el emoji verde
             "parse_mode": "HTML"
         }
-        
+
         # Intentamos editar el mensaje
         edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
         r = requests.post(edit_url, json=payload)
 
         if r.status_code == 200:
+            print(f"Mensaje editado correctamente para {alertname}, message_id: {message_id}")
             return {"status": "mensaje editado"}
         else:
             print(f"Error al editar mensaje para {alertname}: {r.text}")
@@ -94,6 +103,8 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
+
 
 
 
