@@ -52,12 +52,17 @@ def alert():
             "text": text,
             "parse_mode": "HTML"
         }
-        
+
         # Enviar mensaje a todos los chat_ids
         for chat_id in CHAT_IDs:
             payload["chat_id"] = chat_id
             send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
             r = requests.post(send_url, json=payload)
+
+            # Agregar más log para depurar
+            print(f"Enviando alerta a chat_id: {chat_id}")
+            print(f"Payload de envío: {payload}")
+            print(f"Respuesta de Telegram: {r.status_code} - {r.text}")
 
             if r.status_code == 200:
                 resp = r.json()
@@ -79,6 +84,9 @@ def alert():
 
         print(f"Intentando editar el mensaje con message_id: {message_id}")  # Log para comprobar
 
+        # Inicializar failed_chats dentro de la sección de 'resolved'
+        failed_chats = []  # Para almacenar los chat_ids que no se pudieron editar
+        
         # Intentar editar el mensaje para cada chat_id
         for chat_id in CHAT_IDs:
             payload = {
@@ -93,14 +101,17 @@ def alert():
             # Log de la respuesta de Telegram
             print(f"Respuesta de Telegram al intentar editar para {chat_id}: {r.status_code} - {r.text}")
 
-            # Si hubo chat_ids que no se pudieron editar, devolvemos un error
+            if r.status_code != 200:
+                failed_chats.append(chat_id)  # Si falla, agregamos el chat_id a la lista
+                print(f"Error al editar mensaje para {alertname}, message_id: {message_id}, chat_id: {chat_id}: {r.text}")
+
+        # Si hubo chat_ids que no se pudieron editar, devolvemos un error
         if failed_chats:
             return {"status": "error al editar en algunos chat_ids", "failed_chats": failed_chats}, 500
 
         print(f"Mensaje editado correctamente para {alertname}, message_id: {message_id}")
         return {"status": "mensaje editado"}
-        
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
