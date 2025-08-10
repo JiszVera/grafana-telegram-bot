@@ -77,6 +77,8 @@ def alert():
             print(f"Error: No se encontró message_id para la alerta {alertname}")
             return {"status": "no se encontró message_id para editar"}
 
+        print(f"Intentando editar el mensaje con message_id: {message_id}")  # Log para comprobar
+
         payload = {
             "chat_id": CHAT_IDs[0],  # Asumimos que editas el mensaje en el primer chat_id
             "message_id": message_id,
@@ -86,17 +88,21 @@ def alert():
         edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
         r = requests.post(edit_url, json=payload)
 
+        # Log de la respuesta de Telegram
+        print(f"Respuesta de Telegram al intentar editar: {r.status_code} - {r.text}")
+
         if r.status_code == 200:
             print(f"Mensaje editado correctamente para {alertname}, message_id: {message_id}")
             return {"status": "mensaje editado"}
         else:
             # Agregar logs más detallados sobre la respuesta de Telegram
-            print(f"Error al editar mensaje para {alertname}: {r.text}")
+            print(f"Error al editar mensaje para {alertname}, message_id: {message_id}: {r.text}")
             return {"status": "error al editar", "detail": r.text}, 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
