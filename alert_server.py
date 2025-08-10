@@ -93,14 +93,14 @@ def alert():
             # Log de la respuesta de Telegram
             print(f"Respuesta de Telegram al intentar editar para {chat_id}: {r.status_code} - {r.text}")
 
-            if r.status_code != 200:
-                # Si hay un error con cualquiera de los chat_ids, devolvemos error
-                print(f"Error al editar mensaje para {alertname}, message_id: {message_id}, chat_id: {chat_id}: {r.text}")
-                return {"status": "error al editar", "detail": r.text}, 500
+            # Si hubo chat_ids que no se pudieron editar, devolvemos un error
+        if failed_chats:
+            return {"status": "error al editar en algunos chat_ids", "failed_chats": failed_chats}, 500
 
         print(f"Mensaje editado correctamente para {alertname}, message_id: {message_id}")
         return {"status": "mensaje editado"}
-
+        
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
