@@ -12,15 +12,20 @@ CHAT_IDs = os.environ.get("CHAT_ID", "").split(",")
 if not BOT_TOKEN or not CHAT_IDs:
     raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
 
-# Cargar almacenamiento persistente de message_ids
-STORE_FILE = "7var7data7message_store.json"
-#Asegurar que la carpeta exista
-os.makedirs(os.path.dirname(STORE_FILE), exist_ok=True)
+# Ruta persistente en Render
+STORE_FILE = "/var/data/message_store.json"
 
+# Crear carpeta persistente si no existe
+os.makedirs("/var/data", exist_ok=True)
+
+# Cargar almacenamiento persistente de message_ids
 def load_store():
     try:
         with open(STORE_FILE, "r") as f:
-            return json.load(f)
+            data = json.load(f)
+            if not isinstance(data, dict):
+                return {}
+            return data
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
@@ -28,10 +33,12 @@ def save_store(store):
     with open(STORE_FILE, "w") as f:
         json.dump(store, f)
 
+# Cargar datos al iniciar
 message_store = load_store()
 
 @app.route("/alert", methods=["POST"])
 def alert():
+    global message_store
     data = request.get_json(force=True)
     alerts = data.get("alerts", [])
 
@@ -60,8 +67,9 @@ def alert():
     if status == "firing":
         message_store[alertname] = {}
         for chat_id in CHAT_IDs:
+            chat_id = chat_id.strip()
             payload = {
-                "chat_id": chat_id.strip(),
+                "chat_id": chat_id,
                 "text": text,
                 "parse_mode": "HTML"
             }
@@ -108,6 +116,7 @@ def alert():
             if r.status_code != 200:
                 print(f"Error al editar mensaje para {alertname}, message_id: {message_id}, chat_id: {chat_id}: {r.text}")
 
+        save_store(message_store)
         return {"status": "resuelto enviado"}
 
 if __name__ == "__main__":
