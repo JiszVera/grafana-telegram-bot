@@ -2,6 +2,7 @@ from flask import Flask, request
 import requests
 import os
 import json
+import time
 from supabase import create_client, Client
 
 app = Flask(__name__)
@@ -16,8 +17,10 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 if not BOT_TOKEN or not CHAT_IDs:
     raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
 
+# Diccionario para controlar cooldown de alertas firing en memoria
+last_sent = {}
+
 def save_message(alertname, chat_id, message_id, status):
-    """Guardar o actualizar mensaje en Supabase incluyendo el status para la columna NOT NULL."""
     print(f"Guardando mensaje: alertname={alertname}, chat_id={chat_id}, message_id={message_id}, status={status}")
     data = supabase.table("alerts").select("*").eq("alertname", alertname).eq("chat_id", chat_id).execute()
     if data.data:
@@ -72,8 +75,19 @@ def alert():
     text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n{summary}\n"
 
     if status == "firing":
+        now = time.time()
+        cooldown_seconds = 60
+
         for chat_id in CHAT_IDs:
             chat_id = chat_id.strip()
+            key = f"{alertname}-{chat_id}"
+
+            # Verificamos cooldown para evitar mensajes repetidos
+            last_time = last_sent.get(key, 0)
+            if now - last_time < cooldown_seconds:
+                print(f"Ignorando alerta repetida '{alertname}' para chat {chat_id} en menos de {cooldown_seconds} segundos")
+                continue
+
             payload = {
                 "chat_id": chat_id,
                 "text": text,
@@ -86,6 +100,7 @@ def alert():
             if r.status_code == 200:
                 message_id = r.json()["result"]["message_id"]
                 save_message(alertname, chat_id, message_id, status)
+                last_sent[key] = now  # Actualizamos el timestamp de última alerta enviada
             else:
                 print(f"Error al enviar mensaje a {chat_id}: {r.text}")
 
@@ -118,6 +133,7 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
