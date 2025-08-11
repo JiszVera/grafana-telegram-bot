@@ -2,41 +2,65 @@ from flask import Flask, request
 import requests
 import os
 import json
+from supabase import create_client, Client
 
 app = Flask(__name__)
 
 # Variables de entorno
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_IDs = os.environ.get("CHAT_ID", "").split(",")
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 if not BOT_TOKEN or not CHAT_IDs:
     raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
 
-# Ruta persistente (solo persiste entre sleeps, no entre deploys)
-STORE_DIR = "data"
-STORE_FILE = os.path.join(STORE_DIR, "message_store.json")
+# =============================
+# Funciones para almacenar datos en Supabase
+# =============================
 
-# Crear carpeta si no existe
-os.makedirs(STORE_DIR, exist_ok=True)
-
-# Cargar almacenamiento persistente de message_ids
 def load_store():
+    """Carga el diccionario de message_store desde Supabase."""
     try:
-        with open(STORE_FILE, "r") as f:
-            data = json.load(f)
-            if not isinstance(data, dict):
-                return {}
-            return data
-    except (FileNotFoundError, json.JSONDecodeError):
+        res = supabase.table("alert_store").select("*").execute()
+        store = {}
+        for row in res.data:
+            alertname = row["alertname"]
+            chat_id = row["chat_id"]
+            message_id = row["message_id"]
+            if alertname not in store:
+                store[alertname] = {}
+            store[alertname][chat_id] = message_id
+        return store
+    except Exception as e:
+        print("Error cargando datos de Supabase:", e)
         return {}
 
-def save_store(store):
-    with open(STORE_FILE, "w") as f:
-        json.dump(store, f)
+def save_message(alertname, chat_id, message_id):
+    """Guarda o actualiza un registro en Supabase."""
+    try:
+        supabase.table("alert_store").upsert({
+            "alertname": alertname,
+            "chat_id": chat_id,
+            "message_id": message_id
+        }).execute()
+    except Exception as e:
+        print("Error guardando en Supabase:", e)
 
-# Cargar datos al iniciar
+def delete_message(alertname):
+    """Elimina todos los registros de un alertname."""
+    try:
+        supabase.table("alert_store").delete().eq("alertname", alertname).execute()
+    except Exception as e:
+        print("Error eliminando en Supabase:", e)
+
+# Cargar datos iniciales
 message_store = load_store()
 
+# =============================
+# RUTA PRINCIPAL
+# =============================
 @app.route("/alert", methods=["POST"])
 def alert():
     global message_store
@@ -53,7 +77,7 @@ def alert():
     alertname = labels.get("alertname", "Sin nombre")
     summary = annotations.get("summary", "🚨GRUPO EN SERVICIO🚨")
 
-    # Crear texto del mensaje
+    # Texto del mensaje
     if status == "firing":
         emoji = "🔴"
         title = "ALERTA ACTIVA"
@@ -65,6 +89,9 @@ def alert():
 
     text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n{summary}\n"
 
+    # =============================
+    # ALERTA ACTIVA
+    # =============================
     if status == "firing":
         message_store[alertname] = {}
         for chat_id in CHAT_IDs:
@@ -84,12 +111,15 @@ def alert():
             if r.status_code == 200:
                 message_id = r.json()["result"]["message_id"]
                 message_store[alertname][chat_id] = message_id
+                save_message(alertname, chat_id, message_id)  # Guardar en Supabase
             else:
                 print(f"Error al enviar mensaje a {chat_id}: {r.text}")
 
-        save_store(message_store)
         return {"status": "alertas enviadas"}
 
+    # =============================
+    # ALERTA RESUELTA
+    # =============================
     elif status == "resolved":
         if alertname not in message_store:
             return {"status": "alerta no encontrada para editar"}
@@ -114,10 +144,11 @@ def alert():
             print(f"Intentando editar el mensaje con message_id: {message_id}")
             print(f"Respuesta de Telegram al intentar editar para {chat_id}: {r.status_code} - {r.text}")
 
-            if r.status_code != 200:
-                print(f"Error al editar mensaje para {alertname}, message_id: {message_id}, chat_id: {chat_id}: {r.text}")
+            if r.status_code == 200:
+                delete_message(alertname)  # Eliminar de Supabase cuando se resuelve
+            else:
+                print(f"Error al editar mensaje para {alertname}, chat_id: {chat_id}: {r.text}")
 
-        save_store(message_store)
         return {"status": "resuelto enviado"}
 
 if __name__ == "__main__":
