@@ -12,11 +12,12 @@ CHAT_IDs = os.environ.get("CHAT_ID", "").split(",")
 if not BOT_TOKEN or not CHAT_IDs:
     raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
 
-# Ruta persistente en Render
-STORE_FILE = "/var/data/message_store.json"
+# Ruta persistente (solo persiste entre sleeps, no entre deploys)
+STORE_DIR = "data"
+STORE_FILE = os.path.join(STORE_DIR, "message_store.json")
 
-# Crear carpeta persistente si no existe
-os.makedirs("/var/data", exist_ok=True)
+# Crear carpeta si no existe
+os.makedirs(STORE_DIR, exist_ok=True)
 
 # Cargar almacenamiento persistente de message_ids
 def load_store():
@@ -122,6 +123,7 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
