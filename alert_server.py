@@ -17,22 +17,15 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 if not BOT_TOKEN or not CHAT_IDs:
     raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
 
-# -------------------
-# Filtro para evitar alertas repetidas en corto tiempo
-# -------------------
+# Filtro anti-repetición por alertname+chat_id
 last_alert_time = {}
 
-# -------------------
-# Funciones para Supabase
-# -------------------
 def save_message(alertname, chat_id, message_id):
     """Guardar en Supabase o actualizar si ya existe."""
     data = supabase.table("alerts").select("*").eq("alertname", alertname).eq("chat_id", chat_id).execute()
     if data.data:
-        # Ya existe, actualizar
         supabase.table("alerts").update({"message_id": message_id}).eq("alertname", alertname).eq("chat_id", chat_id).execute()
     else:
-        # No existe, insertar
         supabase.table("alerts").insert({
             "alertname": alertname,
             "chat_id": chat_id,
@@ -46,19 +39,15 @@ def get_message_id(alertname, chat_id):
         return data.data[0]["message_id"]
     return None
 
-# -------------------
-# Ruta principal
-# -------------------
 @app.route("/alert", methods=["POST"])
 def alert():
     data = request.get_json(force=True)
 
-    # --- Logging completo para diagnosticar posibles duplicados ---
+    # Logging para diagnosticar duplicados
     print("Payload recibido completo:")
     print(json.dumps(data, indent=2))
 
     alerts = data.get("alerts", [])
-
     if not alerts:
         return {"status": "no alerts"}
 
@@ -68,14 +57,6 @@ def alert():
     annotations = alert.get("annotations", {})
     alertname = labels.get("alertname", "Sin nombre")
     summary = annotations.get("summary", "🚨GRUPO EN SERVICIO🚨")
-
-    # --- Filtro para no procesar repetidas en menos de 60 segundos ---
-    now = time()
-    last_time = last_alert_time.get(alertname, 0)
-    if now - last_time < 60:
-        print(f"Ignorando alerta repetida '{alertname}' en menos de 60 segundos")
-        return {"status": "alerta repetida ignorada"}
-    last_alert_time[alertname] = now
 
     # Crear texto del mensaje
     if status == "firing":
@@ -90,8 +71,16 @@ def alert():
     text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n{summary}\n"
 
     if status == "firing":
+        now = time()
         for chat_id in CHAT_IDs:
             chat_id = chat_id.strip()
+            key = f"{alertname}_{chat_id}"
+            last_time = last_alert_time.get(key, 0)
+            if now - last_time < 60:
+                print(f"Ignorando alerta repetida '{alertname}' para chat {chat_id} en menos de 60 segundos")
+                continue
+            last_alert_time[key] = now
+
             payload = {
                 "chat_id": chat_id,
                 "text": text,
@@ -134,6 +123,7 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
