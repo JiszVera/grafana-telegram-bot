@@ -2,6 +2,7 @@ from flask import Flask, request
 import requests
 import os
 import json
+from time import time
 from supabase import create_client, Client
 
 app = Flask(__name__)
@@ -15,6 +16,11 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 if not BOT_TOKEN or not CHAT_IDs:
     raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
+
+# -------------------
+# Filtro para evitar alertas repetidas en corto tiempo
+# -------------------
+last_alert_time = {}
 
 # -------------------
 # Funciones para Supabase
@@ -46,6 +52,11 @@ def get_message_id(alertname, chat_id):
 @app.route("/alert", methods=["POST"])
 def alert():
     data = request.get_json(force=True)
+
+    # --- Logging completo para diagnosticar posibles duplicados ---
+    print("Payload recibido completo:")
+    print(json.dumps(data, indent=2))
+
     alerts = data.get("alerts", [])
 
     if not alerts:
@@ -57,6 +68,14 @@ def alert():
     annotations = alert.get("annotations", {})
     alertname = labels.get("alertname", "Sin nombre")
     summary = annotations.get("summary", "🚨GRUPO EN SERVICIO🚨")
+
+    # --- Filtro para no procesar repetidas en menos de 60 segundos ---
+    now = time()
+    last_time = last_alert_time.get(alertname, 0)
+    if now - last_time < 60:
+        print(f"Ignorando alerta repetida '{alertname}' en menos de 60 segundos")
+        return {"status": "alerta repetida ignorada"}
+    last_alert_time[alertname] = now
 
     # Crear texto del mensaje
     if status == "firing":
@@ -115,6 +134,7 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
