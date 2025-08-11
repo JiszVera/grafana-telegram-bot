@@ -13,7 +13,9 @@ if not BOT_TOKEN or not CHAT_IDs:
     raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
 
 # Cargar almacenamiento persistente de message_ids
-STORE_FILE = "message_store.json"
+STORE_FILE = "7var7data7message_store.json"
+#Asegurar que la carpeta exista
+os.makedirs(os.path.dirname(STORE_FILE), exist_ok=True)
 
 def load_store():
     try:
@@ -111,5 +113,6 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
