@@ -1,7 +1,6 @@
 from flask import Flask, request
 import requests
 import os
-import json
 import time
 from supabase import create_client, Client
 
@@ -74,7 +73,7 @@ def alert():
 
     text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n{summary}\n"
 
-if status == "firing":
+    if status == "firing":
         for chat_id in CHAT_IDs:
             chat_id = chat_id.strip()
 
@@ -132,7 +131,3 @@ if status == "firing":
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
-
