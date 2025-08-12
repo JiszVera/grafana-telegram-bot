@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 # Variables de entorno
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_IDs = os.environ.get("CHAT_ID", "").split(",")
+CHAT_IDs = list(set(chat_id.strip() for chat_id in os.environ.get("CHAT_ID", "").split(",") if chat_id.strip()))
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -118,3 +118,4 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
