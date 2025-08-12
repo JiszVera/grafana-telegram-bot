@@ -2,6 +2,7 @@ from flask import Flask, request
 import requests
 import os
 from supabase import create_client, Client
+import time
 
 app = Flask(__name__)
 
@@ -15,23 +16,47 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 if not BOT_TOKEN or not CHAT_IDs:
     raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
 
+# Funciones para manejar el tiempo del último envío y evitar duplicados
+def get_last_sent(alertname, chat_id):
+    data = supabase.table("alerts").select("last_sent").eq("alertname", alertname).eq("chat_id", chat_id).execute()
+    if data.data and data.data[0].get("last_sent"):
+        return data.data[0]["last_sent"]
+    return 0
+
+def update_last_sent(alertname, chat_id):
+    now = int(time.time())
+    data = supabase.table("alerts").select("*").eq("alertname", alertname).eq("chat_id", chat_id).execute()
+    if data.data:
+        supabase.table("alerts").update({"last_sent": now}).eq("alertname", alertname).eq("chat_id", chat_id).execute()
+    else:
+        supabase.table("alerts").insert({
+            "alertname": alertname,
+            "chat_id": chat_id,
+            "message_id": 0,
+            "status": "",
+            "last_sent": now
+        }).execute()
+
+def should_send(alertname, chat_id, cooldown=60):
+    last = get_last_sent(alertname, chat_id)
+    now = int(time.time())
+    return (now - last) > cooldown
+
 def save_message(alertname, chat_id, message_id, status):
-    """Guardar o actualizar mensaje en Supabase incluyendo el status."""
     print(f"Guardando mensaje: alertname={alertname}, chat_id={chat_id}, message_id={message_id}, status={status}")
     data = supabase.table("alerts").select("*").eq("alertname", alertname).eq("chat_id", chat_id).execute()
     if data.data:
-        print("Actualizando registro existente")
         supabase.table("alerts").update({
             "message_id": message_id,
             "status": status
         }).eq("alertname", alertname).eq("chat_id", chat_id).execute()
     else:
-        print("Insertando nuevo registro")
         supabase.table("alerts").insert({
             "alertname": alertname,
             "chat_id": chat_id,
             "message_id": message_id,
-            "status": status
+            "status": status,
+            "last_sent": int(time.time())
         }).execute()
 
 def get_message_id(alertname, chat_id):
@@ -73,6 +98,11 @@ def alert():
     if status == "firing":
         for chat_id in CHAT_IDs:
             chat_id = chat_id.strip()
+
+            if not should_send(alertname, chat_id):
+                print(f"Ignorando alerta repetida '{alertname}' para chat {chat_id} en menos de 60 segundos")
+                continue  # evita enviar repetida muy rápido
+
             payload = {
                 "chat_id": chat_id,
                 "text": text,
@@ -85,6 +115,7 @@ def alert():
             if r.status_code == 200:
                 message_id = r.json()["result"]["message_id"]
                 save_message(alertname, chat_id, message_id, status)
+                update_last_sent(alertname, chat_id)
             else:
                 print(f"Error al enviar mensaje a {chat_id}: {r.text}")
 
