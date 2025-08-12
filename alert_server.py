@@ -74,36 +74,36 @@ def alert():
 
     text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n{summary}\n"
 
-    if status == "firing":
-    for chat_id in CHAT_IDs:
-        chat_id = chat_id.strip()
+if status == "firing":
+        for chat_id in CHAT_IDs:
+            chat_id = chat_id.strip()
 
-        # Consultar último status guardado en supabase para esta alerta y chat
-        data = supabase.table("alerts").select("status").eq("alertname", alertname).eq("chat_id", chat_id).execute()
-        last_status = data.data[0]["status"] if data.data else None
+            # Consultar último status guardado en supabase para esta alerta y chat
+            data = supabase.table("alerts").select("status").eq("alertname", alertname).eq("chat_id", chat_id).execute()
+            last_status = data.data[0]["status"] if data.data else None
 
-        if last_status == "firing":
-            # Ya se envió esta alerta firing y sigue activa, no enviamos repetido
-            print(f"Alerta '{alertname}' para chat {chat_id} ya está activa, no se envía de nuevo.")
-            continue
+            if last_status == "firing":
+                # Ya se envió esta alerta firing y sigue activa, no enviamos repetido
+                print(f"Alerta '{alertname}' para chat {chat_id} ya está activa, no se envía de nuevo.")
+                continue
 
-        # Enviar mensaje porque es la primera vez o cambió a firing después de resolved
-        payload = {
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": "HTML"
-        }
-        send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        r = requests.post(send_url, json=payload)
-        print(f"Enviando firing a chat_id={chat_id}, status_code={r.status_code}")
+            # Enviar mensaje porque es la primera vez o cambió a firing después de resolved
+            payload = {
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML"
+            }
+            send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            r = requests.post(send_url, json=payload)
+            print(f"Enviando firing a chat_id={chat_id}, status_code={r.status_code}")
 
-        if r.status_code == 200:
-            message_id = r.json()["result"]["message_id"]
-            save_message(alertname, chat_id, message_id, status)
-        else:
-            print(f"Error al enviar mensaje a {chat_id}: {r.text}")
+            if r.status_code == 200:
+                message_id = r.json()["result"]["message_id"]
+                save_message(alertname, chat_id, message_id, status)
+            else:
+                print(f"Error al enviar mensaje a {chat_id}: {r.text}")
 
-    return {"status": "alertas enviadas"}
+        return {"status": "alertas enviadas"}
 
     elif status == "resolved":
         for chat_id in CHAT_IDs:
@@ -132,6 +132,7 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
