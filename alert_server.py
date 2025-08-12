@@ -1,7 +1,7 @@
 from flask import Flask, request
 import requests
 import os
-import time
+import json
 from supabase import create_client, Client
 
 app = Flask(__name__)
@@ -16,38 +16,24 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 if not BOT_TOKEN or not CHAT_IDs:
     raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
 
-# Diccionario para bloquear procesamiento rápido repetido de alertas
-processing_lock = {}
-
-def can_process(alertname, chat_id):
-    key = f"{alertname}-{chat_id}"
-    now = time.time()
-    last = processing_lock.get(key, 0)
-    if now - last < 10:  # Bloqueo de 10 segundos para evitar procesamiento concurrente
-        print(f"Lock activo para {key}, ignorando alerta duplicada cercana")
-        return False
-    processing_lock[key] = now
-    return True
-
 def save_message(alertname, chat_id, message_id, status):
+    """Guardar o actualizar mensaje en Supabase incluyendo el status para la columna NOT NULL."""
     print(f"Guardando mensaje: alertname={alertname}, chat_id={chat_id}, message_id={message_id}, status={status}")
     data = supabase.table("alerts").select("*").eq("alertname", alertname).eq("chat_id", chat_id).execute()
     if data.data:
         print("Actualizando registro existente")
-        result = supabase.table("alerts").update({
+        supabase.table("alerts").update({
             "message_id": message_id,
             "status": status
         }).eq("alertname", alertname).eq("chat_id", chat_id).execute()
-        print(f"Actualización resultado: {result.status_code} - {result.data}")
     else:
         print("Insertando nuevo registro")
-        result = supabase.table("alerts").insert({
+        supabase.table("alerts").insert({
             "alertname": alertname,
             "chat_id": chat_id,
             "message_id": message_id,
             "status": status
         }).execute()
-        print(f"Inserción resultado: {result.status_code} - {result.data}")
 
 def get_message_id(alertname, chat_id):
     data = supabase.table("alerts").select("message_id").eq("alertname", alertname).eq("chat_id", chat_id).execute()
@@ -88,20 +74,6 @@ def alert():
     if status == "firing":
         for chat_id in CHAT_IDs:
             chat_id = chat_id.strip()
-
-            # Bloqueo para evitar procesar la misma alerta muy cerca en el tiempo
-            if not can_process(alertname, chat_id):
-                continue
-
-            # Consultar último status guardado en supabase para esta alerta y chat
-            data = supabase.table("alerts").select("status").eq("alertname", alertname).eq("chat_id", chat_id).execute()
-            last_status = data.data[0]["status"] if data.data else None
-
-            if last_status == "firing":
-                print(f"Alerta '{alertname}' para chat {chat_id} ya está activa, no se envía de nuevo.")
-                continue
-
-            # Enviar mensaje porque es la primera vez o cambió a firing después de resolved
             payload = {
                 "chat_id": chat_id,
                 "text": text,
@@ -146,3 +118,4 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
