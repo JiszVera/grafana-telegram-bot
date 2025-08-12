@@ -1,139 +1,112 @@
 from flask import Flask, request
-import requests
+from supabase import create_client
+from datetime import datetime, timedelta, timezone
 import os
-from supabase import create_client, Client
+import requests
 
-app = Flask(__name__)
-
-# Variables de entorno
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_IDs = os.environ.get("CHAT_ID", "").split(",")
+# Configuración desde variables de entorno en Render
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
-if not BOT_TOKEN or not CHAT_IDs:
-    raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+app = Flask(__name__)
 
-def save_message(alertname, chat_id, message_id, status, fingerprint):
-    print(f"Guardando mensaje: alertname={alertname}, chat_id={chat_id}, message_id={message_id}, status={status}, fingerprint={fingerprint}")
-    data = supabase.table("alerts").select("*").eq("alertname", alertname).eq("chat_id", chat_id).execute()
-    if data.data:
-        supabase.table("alerts").update({
-            "message_id": message_id,
-            "status": status,
-            "fingerprint": fingerprint
-        }).eq("alertname", alertname).eq("chat_id", chat_id).execute()
-    else:
-        supabase.table("alerts").insert({
-            "alertname": alertname,
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "status": status,
-            "fingerprint": fingerprint
-        }).execute()
-
-def get_message_id(alertname, chat_id):
-    data = supabase.table("alerts").select("message_id").eq("alertname", alertname).eq("chat_id", chat_id).execute()
-    if data.data:
-        return data.data[0]["message_id"]
-    return None
-
-def get_fingerprint(alertname, chat_id):
-    data = supabase.table("alerts").select("fingerprint").eq("alertname", alertname).eq("chat_id", chat_id).execute()
-    if data.data:
-        return data.data[0].get("fingerprint")
-    return None
+# Tiempo mínimo para reenviar la misma alerta
+MIN_TIME_BETWEEN_ALERTS = timedelta(minutes=2)
 
 def should_send(alertname, chat_id, fingerprint):
-    last_fp = get_fingerprint(alertname, chat_id)
-    if last_fp == fingerprint:
-        print(f"Ignorando alerta duplicada por fingerprint para '{alertname}' en chat {chat_id}")
-        return False
-    return True
+    """Decide si enviar o no la alerta."""
+    data = supabase.table("alerts") \
+        .select("fingerprint, last_sent") \
+        .eq("alertname", alertname) \
+        .eq("chat_id", chat_id) \
+        .execute()
+
+    if not data.data:
+        return True  # No hay registros, enviar
+
+    row = data.data[0]
+    last_fp = row.get("fingerprint")
+    last_sent_str = row.get("last_sent")
+    last_sent = None
+
+    if last_sent_str:
+        try:
+            last_sent = datetime.fromisoformat(last_sent_str.replace("Z", "+00:00"))
+        except:
+            pass
+
+    now = datetime.now(timezone.utc)
+
+    # Si fingerprint es distinto → enviar
+    if last_fp != fingerprint:
+        return True
+    # Si pasó el tiempo mínimo → enviar
+    if last_sent and now - last_sent > MIN_TIME_BETWEEN_ALERTS:
+        return True
+
+    return False
+
+def save_message(alertname, chat_id, message_id, status, fingerprint):
+    """Guarda o actualiza el registro en Supabase."""
+    supabase.table("alerts").upsert({
+        "alertname": alertname,
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "status": status,
+        "fingerprint": fingerprint,
+        "last_sent": datetime.now(timezone.utc).isoformat()
+    }).execute()
+
+def send_telegram_message(chat_id, text):
+    """Envía mensaje a Telegram."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    resp = requests.post(url, json=payload)
+    return resp.json().get("result", {}).get("message_id")
+
+def edit_telegram_message(chat_id, message_id, text):
+    """Edita mensaje existente en Telegram."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
+    payload = {"chat_id": chat_id, "message_id": message_id, "text": text}
+    requests.post(url, json=payload)
 
 @app.route("/alert", methods=["POST"])
 def alert():
-    data = request.get_json(force=True)
-    alerts = data.get("alerts", [])
-    if not alerts:
-        print("No hay alertas en el payload recibido")
-        return {"status": "no alerts"}
+    alert_data = request.json
+    status = alert_data["status"]
+    alertname = alert_data["alerts"][0]["labels"]["alertname"]
+    fingerprint = alert_data["alerts"][0].get("fingerprint", "")
+    message_text = alert_data["alerts"][0]["annotations"]["description"]
 
-    alert = alerts[0]
-    status = alert.get("status")
-    labels = alert.get("labels", {})
-    annotations = alert.get("annotations", {})
-    alertname = labels.get("alertname", "Sin nombre")
-    fingerprint = alert.get("fingerprint", "")
-    summary = annotations.get("summary", "🚨GRUPO EN SERVICIO🚨")
+    # Lista de chats a notificar
+    chat_ids = ["123456789", "987654321"]  # Reemplazar por tus chats reales
 
-    print(f"Alerta recibida: alertname='{alertname}', status='{status}', fingerprint='{fingerprint}'")
-
-    if status == "firing":
-        emoji = "🔴"
-        title = "ALERTA ACTIVA"
-    elif status == "resolved":
-        emoji = "🟢"
-        title = "ALERTA RESUELTA"
-    else:
-        print(f"Estado desconocido: {status}")
-        return {"status": "estado desconocido"}
-
-    text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n{summary}\n"
-
-    if status == "firing":
-        for chat_id in CHAT_IDs:
-            chat_id = chat_id.strip()
-            if not should_send(alertname, chat_id, fingerprint):
-                continue
-
-            payload = {
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "HTML"
-            }
-            send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-            r = requests.post(send_url, json=payload)
-            print(f"Enviando firing a chat_id={chat_id}, status_code={r.status_code}")
-
-            if r.status_code == 200:
-                message_id = r.json()["result"]["message_id"]
+    for chat_id in chat_ids:
+        if status == "firing":
+            if should_send(alertname, chat_id, fingerprint):
+                message_id = send_telegram_message(chat_id, f"🚨 ALERTA: {message_text}")
                 save_message(alertname, chat_id, message_id, status, fingerprint)
             else:
-                print(f"Error al enviar mensaje a {chat_id}: {r.text}")
+                print(f"⏳ Firing {alertname} para {chat_id} bloqueado por duplicado reciente")
 
-        return {"status": "alertas enviadas"}
+        elif status == "resolved":
+            data = supabase.table("alerts") \
+                .select("message_id") \
+                .eq("alertname", alertname) \
+                .eq("chat_id", chat_id) \
+                .execute()
 
-    elif status == "resolved":
-        for chat_id in CHAT_IDs:
-            chat_id = chat_id.strip()
-            message_id = get_message_id(alertname, chat_id)
+            if data.data:
+                message_id = data.data[0]["message_id"]
+                edit_telegram_message(chat_id, message_id, f"✅ RESUELTO: {message_text}")
+                save_message(alertname, chat_id, message_id, status, fingerprint)
 
-            if not message_id:
-                print(f"No se encontró message_id para alertname='{alertname}', chat_id={chat_id}")
-                continue
-
-            payload = {
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "text": text,
-                "parse_mode": "HTML"
-            }
-            edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
-            r = requests.post(edit_url, json=payload)
-            print(f"Intentando editar mensaje para chat_id={chat_id}, message_id={message_id}, status_code={r.status_code}")
-
-            if r.status_code != 200:
-                print(f"Error al editar mensaje: {r.text}")
-
-        return {"status": "resuelto enviado"}
+    return "", 200
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-
-
+    app.run(host="0.0.0.0", port=10000)
 
 
 
