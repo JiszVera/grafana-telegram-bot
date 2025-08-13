@@ -1,7 +1,6 @@
 from flask import Flask, request
 import requests
 import os
-import json
 from supabase import create_client, Client
 
 app = Flask(__name__)
@@ -17,17 +16,14 @@ if not BOT_TOKEN or not CHAT_IDs:
     raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
 
 def save_message(alertname, chat_id, message_id, status):
-    """Guardar o actualizar mensaje en Supabase incluyendo el status para la columna NOT NULL."""
-    print(f"Guardando mensaje: alertname={alertname}, chat_id={chat_id}, message_id={message_id}, status={status}")
+    """Guardar o actualizar mensaje en Supabase."""
     data = supabase.table("alerts").select("*").eq("alertname", alertname).eq("chat_id", chat_id).execute()
     if data.data:
-        print("Actualizando registro existente")
         supabase.table("alerts").update({
             "message_id": message_id,
             "status": status
         }).eq("alertname", alertname).eq("chat_id", chat_id).execute()
     else:
-        print("Insertando nuevo registro")
         supabase.table("alerts").insert({
             "alertname": alertname,
             "chat_id": chat_id,
@@ -35,11 +31,12 @@ def save_message(alertname, chat_id, message_id, status):
             "status": status
         }).execute()
 
-def get_message_id(alertname, chat_id):
-    data = supabase.table("alerts").select("message_id").eq("alertname", alertname).eq("chat_id", chat_id).execute()
+def get_alert_status(alertname, chat_id):
+    """Obtener estado y message_id de una alerta."""
+    data = supabase.table("alerts").select("status, message_id").eq("alertname", alertname).eq("chat_id", chat_id).execute()
     if data.data:
-        return data.data[0]["message_id"]
-    return None
+        return data.data[0]["status"], data.data[0]["message_id"]
+    return None, None
 
 @app.route("/alert", methods=["POST"])
 def alert():
@@ -47,7 +44,6 @@ def alert():
     alerts = data.get("alerts", [])
 
     if not alerts:
-        print("No hay alertas en el payload recibido")
         return {"status": "no alerts"}
 
     alert = alerts[0]
@@ -57,8 +53,6 @@ def alert():
     alertname = labels.get("alertname", "Sin nombre")
     summary = annotations.get("summary", "🚨GRUPO EN SERVICIO🚨")
 
-    print(f"Alerta recibida: alertname={alertname}, status={status}")
-
     if status == "firing":
         emoji = "🔴"
         title = "ALERTA ACTIVA"
@@ -66,65 +60,56 @@ def alert():
         emoji = "🟢"
         title = "ALERTA RESUELTA"
     else:
-        print(f"Estado desconocido: {status}")
         return {"status": "estado desconocido"}
 
     text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n{summary}\n"
 
-    if status == "firing":
-        for chat_id in CHAT_IDs:
-            chat_id = chat_id.strip()
+    for chat_id in CHAT_IDs:
+        chat_id = chat_id.strip()
+        prev_status, message_id = get_alert_status(alertname, chat_id)
+
+        # 🚫 Ignorar firing repetido
+        if status == "firing" and prev_status == "firing":
+            print(f"⚠️ Ignorado: '{alertname}' ya está en firing para {chat_id}")
+            continue
+
+        # Enviar nuevo firing
+        if status == "firing":
             payload = {
                 "chat_id": chat_id,
                 "text": text,
                 "parse_mode": "HTML"
             }
-            send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-            r = requests.post(send_url, json=payload)
-            print(f"Enviando firing a chat_id={chat_id}, status_code={r.status_code}")
-
+            r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload)
             if r.status_code == 200:
                 message_id = r.json()["result"]["message_id"]
                 save_message(alertname, chat_id, message_id, status)
             else:
-                print(f"Error al enviar mensaje a {chat_id}: {r.text}")
+                print(f"Error al enviar mensaje: {r.text}")
 
-        return {"status": "alertas enviadas"}
-
-    elif status == "resolved":
-        for chat_id in CHAT_IDs:
-            chat_id = chat_id.strip()
-            message_id = get_message_id(alertname, chat_id)
-
-            if not message_id:
-                print(f"No se encontró message_id para alertname={alertname}, chat_id={chat_id}")
-                continue
-
+        # Editar a resuelto
+        elif status == "resolved" and message_id:
             payload = {
                 "chat_id": chat_id,
                 "message_id": message_id,
                 "text": text,
                 "parse_mode": "HTML"
             }
-            edit_url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
-            r = requests.post(edit_url, json=payload)
-
-            print(f"Intentando editar mensaje para chat_id={chat_id}, message_id={message_id}, status_code={r.status_code}")
-            if r.status_code != 200:
+            r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload)
+            if r.status_code == 200:
+                save_message(alertname, chat_id, message_id, status)
+            else:
                 print(f"Error al editar mensaje: {r.text}")
 
-        return {"status": "resuelto enviado"}
+    return {"status": "procesado"}
 
-# ✅ RUTA PARA CHEQUEO DE UPTIMEROBOT
 @app.route("/ping", methods=["GET", "HEAD"])
 def ping():
     return "", 200
 
-# ✅ RUTA OPCIONAL PARA VERIFICAR QUE EL BOT ESTÁ ACTIVO
 @app.route("/")
 def home():
     return "✅ Bot de Telegram para Grafana está en funcionamiento."
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
