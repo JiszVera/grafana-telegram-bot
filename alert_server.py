@@ -39,6 +39,13 @@ def is_alert_already_sent(alertname, chat_id):
         return True
     return False
 
+@app.route("/ping", methods=["GET"])
+def ping():
+    return "pong", 200
+
+@app.route("/alert", methods=["POST"])
+def alert():
+
 @app.route("/alert", methods=["POST"])
 def alert():
     data = request.get_json(force=True)
@@ -124,3 +131,4 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
