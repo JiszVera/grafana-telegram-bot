@@ -45,9 +45,6 @@ def ping():
 
 @app.route("/alert", methods=["POST"])
 def alert():
-
-@app.route("/alert", methods=["POST"])
-def alert():
     data = request.get_json(force=True)
     alerts = data.get("alerts", [])
 
@@ -131,4 +128,5 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
