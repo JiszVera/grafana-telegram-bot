@@ -32,10 +32,10 @@ def get_message_id(alertname, chat_id):
         return data.data[0]["message_id"]
     return None
 
-def is_alert_already_sent(alertname, chat_id):
-    """Verifica si ya se envió una alerta 'firing' para evitar duplicados."""
+def is_alert_already_sent(alertname, chat_id, status):
+    """Verifica si ya se envió una alerta con el mismo status para evitar duplicados."""
     data = supabase.table("alerts").select("status").eq("alertname", alertname).eq("chat_id", chat_id).execute()
-    if data.data and data.data[0]["status"] == "firing":
+    if data.data and data.data[0]["status"] == status:
         return True
     return False
 
@@ -78,8 +78,8 @@ def alert():
             chat_id = chat_id.strip()
 
             # Evita duplicados si ya se envió
-            if is_alert_already_sent(alertname, chat_id):
-                print(f"Alerta ya fue enviada, se omite: alertname={alertname}, chat_id={chat_id}")
+            if is_alert_already_sent(alertname, chat_id, status):
+                print(f"Alerta con status {status} ya fue enviada, se omite: alertname={alertname}, chat_id={chat_id}")
                 continue
 
             payload = {
@@ -128,5 +128,6 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
