@@ -115,6 +115,17 @@ def alert():
 
         return {"status": "resuelto enviado"}
 
+# ✅ RUTA PARA CHEQUEO DE UPTIMEROBOT
+@app.route("/ping", methods=["GET", "HEAD"])
+def ping():
+    return "", 200
+
+# ✅ RUTA OPCIONAL PARA VERIFICAR QUE EL BOT ESTÁ ACTIVO
+@app.route("/")
+def home():
+    return "✅ Bot de Telegram para Grafana está en funcionamiento."
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
