@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 # Variables de entorno
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_IDs = list(set(chat_id.strip() for chat_id in os.environ.get("CHAT_ID", "").split(",") if chat_id.strip()))
+CHAT_IDs = os.environ.get("CHAT_ID", "").split(",")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -17,31 +17,29 @@ if not BOT_TOKEN or not CHAT_IDs:
     raise ValueError("Faltan BOT_TOKEN o CHAT_ID en las variables de entorno.")
 
 def save_message(alertname, chat_id, message_id, status):
-    """Guardar o actualizar mensaje en Supabase de forma atómica."""
-    print(f"Guardando mensaje (upsert): alertname={alertname}, chat_id={chat_id}, message_id={message_id}, status={status}")
-    supabase.table("alerts").upsert({
-        "alertname": alertname,
-        "chat_id": chat_id,
-        "message_id": message_id,
-        "status": status
-    }, on_conflict=["alertname", "chat_id"]).execute()
+    """Guardar o actualizar mensaje en Supabase incluyendo el status para la columna NOT NULL."""
+    print(f"Guardando mensaje: alertname={alertname}, chat_id={chat_id}, message_id={message_id}, status={status}")
+    data = supabase.table("alerts").select("*").eq("alertname", alertname).eq("chat_id", chat_id).execute()
+    if data.data:
+        print("Actualizando registro existente")
+        supabase.table("alerts").update({
+            "message_id": message_id,
+            "status": status
+        }).eq("alertname", alertname).eq("chat_id", chat_id).execute()
+    else:
+        print("Insertando nuevo registro")
+        supabase.table("alerts").insert({
+            "alertname": alertname,
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "status": status
+        }).execute()
 
 def get_message_id(alertname, chat_id):
     data = supabase.table("alerts").select("message_id").eq("alertname", alertname).eq("chat_id", chat_id).execute()
     if data.data:
         return data.data[0]["message_id"]
     return None
-
-def is_alert_already_sent(alertname, chat_id, status):
-    """Verifica si ya se envió una alerta con el mismo status para evitar duplicados."""
-    data = supabase.table("alerts").select("status").eq("alertname", alertname).eq("chat_id", chat_id).execute()
-    if data.data and data.data[0]["status"] == status:
-        return True
-    return False
-
-@app.route("/ping", methods=["GET"])
-def ping():
-    return "pong", 200
 
 @app.route("/alert", methods=["POST"])
 def alert():
@@ -76,12 +74,6 @@ def alert():
     if status == "firing":
         for chat_id in CHAT_IDs:
             chat_id = chat_id.strip()
-
-            # Evita duplicados si ya se envió
-            if is_alert_already_sent(alertname, chat_id, status):
-                print(f"Alerta con status {status} ya fue enviada, se omite: alertname={alertname}, chat_id={chat_id}")
-                continue
-
             payload = {
                 "chat_id": chat_id,
                 "text": text,
@@ -118,9 +110,7 @@ def alert():
             r = requests.post(edit_url, json=payload)
 
             print(f"Intentando editar mensaje para chat_id={chat_id}, message_id={message_id}, status_code={r.status_code}")
-            if r.status_code == 200:
-                save_message(alertname, chat_id, message_id, status)
-            else:
+            if r.status_code != 200:
                 print(f"Error al editar mensaje: {r.text}")
 
         return {"status": "resuelto enviado"}
@@ -128,6 +118,3 @@ def alert():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
