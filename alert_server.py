@@ -25,14 +25,17 @@ def save_message(alertname, chat_id, summary, message_id, status):
     data = supabase.table("alerts").select("*") \
         .eq("alertname", alertname) \
         .eq("chat_id", chat_id) \
-        .eq("summary", summary).execute()
+        .eq("summary", summary) \
+        .execute()
+
     if data.data:
         supabase.table("alerts").update({
             "message_id": message_id,
             "status": status
         }).eq("alertname", alertname) \
           .eq("chat_id", chat_id) \
-          .eq("summary", summary).execute()
+          .eq("summary", summary) \
+          .execute()
     else:
         supabase.table("alerts").insert({
             "alertname": alertname,
@@ -46,7 +49,8 @@ def get_alert_status(alertname, chat_id, summary):
     data = supabase.table("alerts").select("status, message_id") \
         .eq("alertname", alertname) \
         .eq("chat_id", chat_id) \
-        .eq("summary", summary).execute()
+        .eq("summary", summary) \
+        .execute()
     if data.data:
         return data.data[0]["status"], data.data[0]["message_id"]
     return None, None
@@ -79,6 +83,7 @@ def procesar_alerta(alert):
 
         prev_status, message_id = get_alert_status(alertname, chat_id, summary)
 
+        # Evitar enviar mensaje repetido en estado firing
         if status == "firing" and prev_status == "firing":
             print(f"⚠️ Ignorado: '{alertname}' con summary '{summary}' ya está en firing para {chat_id}")
             return
@@ -93,8 +98,9 @@ def procesar_alerta(alert):
             if r.status_code == 200:
                 message_id = r.json()["result"]["message_id"]
                 save_message(alertname, chat_id, summary, message_id, status)
+                print(f"✅ Enviada alerta firing: '{alertname}' - '{summary}'")
             else:
-                print(f"❌ Error al enviar mensaje: {r.text}")
+                print(f"❌ Error al enviar mensaje: {r.status_code} {r.text}")
 
         elif status == "resolved" and message_id:
             payload = {
@@ -106,8 +112,9 @@ def procesar_alerta(alert):
             r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload, timeout=5)
             if r.status_code == 200:
                 save_message(alertname, chat_id, summary, message_id, status)
+                print(f"✅ Mensaje editado para alerta '{alertname}' con summary '{summary}'")
             else:
-                print(f"❌ Error al editar mensaje: {r.text}")
+                print(f"❌ Error al editar mensaje: {r.status_code} {r.text}")
 
     except Exception as e:
         print(f"⚠️ Error al procesar alerta: {e}")
