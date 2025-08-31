@@ -6,7 +6,7 @@ import threading
 
 app = Flask(__name__)
 
-# Variables de entorno
+# ENV variables
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
@@ -15,27 +15,29 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 if not BOT_TOKEN:
     raise ValueError("Falta BOT_TOKEN en las variables de entorno.")
 
-# Mapea las zonas a sus chat_id correspondientes
 ZONA_CHAT_IDS = {
     "Norte": os.environ.get("CHAT_ID_NORTE"),
     "Sur": os.environ.get("CHAT_ID_SUR"),
 }
 
+# Normaliza el summary para evitar duplicados por espacios o mayúsculas
+def normalize_summary(summary: str) -> str:
+    return summary.strip().lower()
+
 def save_message(alertname, chat_id, summary, message_id, status):
+    summary = normalize_summary(summary)
     data = supabase.table("alerts").select("*") \
         .eq("alertname", alertname) \
         .eq("chat_id", chat_id) \
-        .eq("summary", summary) \
-        .execute()
+        .eq("summary", summary).execute()
 
     if data.data:
         supabase.table("alerts").update({
             "message_id": message_id,
             "status": status
         }).eq("alertname", alertname) \
-          .eq("chat_id", chat_id) \
-          .eq("summary", summary) \
-          .execute()
+         .eq("chat_id", chat_id) \
+         .eq("summary", summary).execute()
     else:
         supabase.table("alerts").insert({
             "alertname": alertname,
@@ -46,11 +48,12 @@ def save_message(alertname, chat_id, summary, message_id, status):
         }).execute()
 
 def get_alert_status(alertname, chat_id, summary):
+    summary = normalize_summary(summary)
     data = supabase.table("alerts").select("status, message_id") \
         .eq("alertname", alertname) \
         .eq("chat_id", chat_id) \
-        .eq("summary", summary) \
-        .execute()
+        .eq("summary", summary).execute()
+
     if data.data:
         return data.data[0]["status"], data.data[0]["message_id"]
     return None, None
@@ -61,7 +64,8 @@ def procesar_alerta(alert):
         labels = alert.get("labels", {})
         annotations = alert.get("annotations", {})
         alertname = labels.get("alertname", "Sin nombre")
-        summary = annotations.get("summary", "🚨GRUPO EN SERVICIO🚨")
+        raw_summary = annotations.get("summary", "🚨GRUPO EN SERVICIO🚨")
+        summary = normalize_summary(raw_summary)
         zona = labels.get("Zona")
         chat_id = ZONA_CHAT_IDS.get(zona)
 
@@ -79,13 +83,12 @@ def procesar_alerta(alert):
             print(f"⚠️ Estado desconocido para alerta: {status}")
             return
 
-        text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n{summary}\n"
+        text = f"{emoji} <b>{title}</b>\n\n{alertname}\n\n{raw_summary}\n"
 
-        prev_status, message_id = get_alert_status(alertname, chat_id, summary)
+        prev_status, message_id = get_alert_status(alertname, chat_id, raw_summary)
 
-        # Evitar enviar mensaje repetido en estado firing
         if status == "firing" and prev_status == "firing":
-            print(f"⚠️ Ignorado: '{alertname}' con summary '{summary}' ya está en firing para {chat_id}")
+            print(f"⚠️ Ignorado: '{alertname}' ya está activa con mismo summary para {chat_id}")
             return
 
         if status == "firing":
@@ -97,10 +100,10 @@ def procesar_alerta(alert):
             r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload, timeout=5)
             if r.status_code == 200:
                 message_id = r.json()["result"]["message_id"]
-                save_message(alertname, chat_id, summary, message_id, status)
-                print(f"✅ Enviada alerta firing: '{alertname}' - '{summary}'")
+                save_message(alertname, chat_id, raw_summary, message_id, status)
+                print(f"✅ Alerta enviada: {alertname} - {raw_summary}")
             else:
-                print(f"❌ Error al enviar mensaje: {r.status_code} {r.text}")
+                print(f"❌ Error al enviar mensaje: {r.text}")
 
         elif status == "resolved" and message_id:
             payload = {
@@ -111,10 +114,12 @@ def procesar_alerta(alert):
             }
             r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload, timeout=5)
             if r.status_code == 200:
-                save_message(alertname, chat_id, summary, message_id, status)
-                print(f"✅ Mensaje editado para alerta '{alertname}' con summary '{summary}'")
+                save_message(alertname, chat_id, raw_summary, message_id, status)
+                print(f"✅ Alerta resuelta: {alertname} - {raw_summary}")
             else:
-                print(f"❌ Error al editar mensaje: {r.status_code} {r.text}")
+                print(f"❌ Error al editar mensaje: {r.text}")
+        else:
+            print("⚠️ No se encontró mensaje para resolver.")
 
     except Exception as e:
         print(f"⚠️ Error al procesar alerta: {e}")
