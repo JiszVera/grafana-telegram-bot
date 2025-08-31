@@ -21,38 +21,32 @@ ZONA_CHAT_IDS = {
     "Sur": os.environ.get("CHAT_ID_SUR"),
 }
 
-def save_message(alertname, chat_id, message_id, status, summary):
-    data = supabase.table("alerts")\
-        .select("*")\
-        .eq("alertname", alertname)\
-        .eq("chat_id", chat_id)\
-        .eq("summary", summary)\
-        .execute()
+def save_message(alertname, chat_id, summary, message_id, status):
+    data = supabase.table("alerts").select("*") \
+        .eq("alertname", alertname) \
+        .eq("chat_id", chat_id) \
+        .eq("summary", summary).execute()
     if data.data:
         supabase.table("alerts").update({
             "message_id": message_id,
-            "status": status,
-            "summary": summary
-        }).eq("alertname", alertname)\
-          .eq("chat_id", chat_id)\
-          .eq("summary", summary)\
-          .execute()
+            "status": status
+        }).eq("alertname", alertname) \
+          .eq("chat_id", chat_id) \
+          .eq("summary", summary).execute()
     else:
         supabase.table("alerts").insert({
             "alertname": alertname,
             "chat_id": chat_id,
+            "summary": summary,
             "message_id": message_id,
-            "status": status,
-            "summary": summary
+            "status": status
         }).execute()
 
 def get_alert_status(alertname, chat_id, summary):
-    data = supabase.table("alerts")\
-        .select("status, message_id")\
-        .eq("alertname", alertname)\
-        .eq("chat_id", chat_id)\
-        .eq("summary", summary)\
-        .execute()
+    data = supabase.table("alerts").select("status, message_id") \
+        .eq("alertname", alertname) \
+        .eq("chat_id", chat_id) \
+        .eq("summary", summary).execute()
     if data.data:
         return data.data[0]["status"], data.data[0]["message_id"]
     return None, None
@@ -86,7 +80,7 @@ def procesar_alerta(alert):
         prev_status, message_id = get_alert_status(alertname, chat_id, summary)
 
         if status == "firing" and prev_status == "firing":
-            print(f"⚠️ Ignorado: '{alertname}' con mismo summary ya está en firing para {chat_id}")
+            print(f"⚠️ Ignorado: '{alertname}' con summary '{summary}' ya está en firing para {chat_id}")
             return
 
         if status == "firing":
@@ -98,7 +92,7 @@ def procesar_alerta(alert):
             r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload, timeout=5)
             if r.status_code == 200:
                 message_id = r.json()["result"]["message_id"]
-                save_message(alertname, chat_id, message_id, status, summary)
+                save_message(alertname, chat_id, summary, message_id, status)
             else:
                 print(f"❌ Error al enviar mensaje: {r.text}")
 
@@ -111,7 +105,7 @@ def procesar_alerta(alert):
             }
             r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload, timeout=5)
             if r.status_code == 200:
-                save_message(alertname, chat_id, message_id, status, summary)
+                save_message(alertname, chat_id, summary, message_id, status)
             else:
                 print(f"❌ Error al editar mensaje: {r.text}")
 
